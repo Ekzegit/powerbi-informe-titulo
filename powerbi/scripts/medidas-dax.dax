@@ -1,0 +1,532 @@
+/*
+================================================================================
+MEDIDAS DAX - ANÁLISIS DE COMPRAS PÚBLICAS
+================================================================================
+Proyecto:     Análisis de Compras Públicas - Senado de la República
+Descripción:  Colección completa de medidas DAX para análisis de compras
+Autor:        Ekzegit
+Fecha:        Febrero 2026
+Versión:      1.0
+================================================================================
+
+CONTENIDO:
+1. KPIs Principales (8 medidas)
+2. Análisis Temporal (7 medidas)
+3. Análisis de Proveedores (6 medidas)
+4. Análisis de Productos (7 medidas)
+5. Análisis Geográfico (4 medidas)
+
+TOTAL: 32 Medidas DAX
+
+INSTRUCCIONES:
+- Copiar cada medida en Power BI Desktop
+- Ir a "Vista de Datos" o "Vista de Informe"
+- Clic derecho en la tabla FactCompras > "Nueva medida"
+- Pegar la fórmula DAX
+- Configurar formato según el tipo de medida
+
+================================================================================
+*/
+
+-- ============================================================================
+-- SECCIÓN 1: KPIs PRINCIPALES
+-- ============================================================================
+
+-- 📊 TOTAL MONTO TRANSADO
+-- Suma total de todos los montos de las transacciones
+Total Monto Transado = 
+SUM(FactCompras[Monto Transado])
+-- Formato: $ Español, 2 decimales
+
+-- 📦 TOTAL CANTIDAD PRODUCTOS
+-- Suma total de unidades compradas
+Total Cantidad Productos = 
+SUM(FactCompras[Cantidad])
+-- Formato: Número entero, separador de miles
+
+-- 💰 PRECIO PROMEDIO GENERAL
+-- Calcula el precio promedio ponderado de todos los productos
+Precio Promedio General = 
+DIVIDE(
+    SUM(FactCompras[Monto Transado]),
+    SUM(FactCompras[Cantidad]),
+    0
+)
+-- Formato: $ Español, 2 decimales
+
+-- 🏢 NÚMERO DE PROVEEDORES ÚNICOS
+-- Cuenta proveedores distintos que han vendido
+Número Proveedores Únicos = 
+DISTINCTCOUNT(FactCompras[Rut Proveedor])
+-- Formato: Número entero
+
+-- 🎯 NÚMERO DE PRODUCTOS ÚNICOS
+-- Cuenta productos distintos comprados
+Número Productos Únicos = 
+DISTINCTCOUNT(FactCompras[Id])
+-- Formato: Número entero
+
+-- 📋 NÚMERO DE ÓRDENES DE COMPRA
+-- Cuenta órdenes de compra únicas
+Número Órdenes Compra = 
+DISTINCTCOUNT(FactCompras[Numero OC])
+-- Formato: Número entero
+
+-- 🎫 TICKET PROMEDIO POR OC
+-- Calcula el monto promedio por orden de compra
+Ticket Promedio por OC = 
+VAR TotalMonto = SUM(FactCompras[Monto Transado])
+VAR NumeroOC = DISTINCTCOUNT(FactCompras[Numero OC])
+RETURN
+    DIVIDE(TotalMonto, NumeroOC, 0)
+-- Formato: $ Español, 2 decimales
+
+-- 💵 MONTO PROMEDIO POR TRANSACCIÓN
+-- Calcula el monto promedio por línea de compra
+Monto Promedio Transacción = 
+AVERAGE(FactCompras[Monto Transado])
+-- Formato: $ Español, 2 decimales
+
+
+-- ============================================================================
+-- SECCIÓN 2: ANÁLISIS TEMPORAL
+-- ============================================================================
+
+-- 📈 MONTO AÑO ACTUAL
+-- Total del año seleccionado en el contexto
+Monto Año Actual = 
+VAR AnioActual = MAX(DimCalendario[Año])
+RETURN
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        DimCalendario[Año] = AnioActual
+    )
+-- Formato: $ Español, 0 decimales
+
+-- 📉 MONTO AÑO ANTERIOR
+-- Total del año anterior al seleccionado
+Monto Año Anterior = 
+VAR AnioActual = MAX(DimCalendario[Año])
+VAR AnioAnterior = AnioActual - 1
+RETURN
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        DimCalendario[Año] = AnioAnterior
+    )
+-- Formato: $ Español, 0 decimales
+
+-- 📊 VARIACIÓN % YoY
+-- Variación porcentual año sobre año (Year over Year)
+Variación % YoY = 
+VAR MontoActual = [Monto Año Actual]
+VAR MontoAnterior = [Monto Año Anterior]
+RETURN
+    DIVIDE(
+        MontoActual - MontoAnterior,
+        MontoAnterior,
+        0
+    )
+-- Formato: Porcentaje, 1 decimal
+
+-- 📈 MONTO ACUMULADO AÑO
+-- Monto acumulado desde inicio del año hasta la fecha actual
+Monto Acumulado Año = 
+VAR FechaMax = MAX(DimCalendario[Fecha])
+VAR AnioActual = YEAR(FechaMax)
+RETURN
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        FILTER(
+            ALL(DimCalendario),
+            DimCalendario[Año] = AnioActual &&
+            DimCalendario[Fecha] <= FechaMax
+        )
+    )
+-- Formato: $ Español, 0 decimales
+
+-- 📅 DÍAS DESDE ÚLTIMA VENTA
+-- Calcula días transcurridos desde la última transacción
+Días Desde Última Venta = 
+VAR UltimaFecha = MAX(FactCompras[Fecha])
+VAR FechaHoy = TODAY()
+RETURN
+    DATEDIFF(UltimaFecha, FechaHoy, DAY)
+-- Formato: Número entero
+
+-- 📆 MONTO MES ACTUAL
+-- Total de compras del mes seleccionado
+Monto Mes Actual = 
+VAR MesActual = MAX(DimCalendario[Mes])
+VAR AnioActual = MAX(DimCalendario[Año])
+RETURN
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        DimCalendario[Mes] = MesActual,
+        DimCalendario[Año] = AnioActual
+    )
+-- Formato: $ Español, 0 decimales
+
+-- 📊 MONTO TRIMESTRE ACTUAL
+-- Total de compras del trimestre seleccionado
+Monto Trimestre Actual = 
+VAR TrimestreActual = MAX(DimCalendario[Trimestre])
+VAR AnioActual = MAX(DimCalendario[Año])
+RETURN
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        DimCalendario[Trimestre] = TrimestreActual,
+        DimCalendario[Año] = AnioActual
+    )
+-- Formato: $ Español, 0 decimales
+
+
+-- ============================================================================
+-- SECCIÓN 3: ANÁLISIS DE PROVEEDORES
+-- ============================================================================
+
+-- 🏆 MONTO POR PROVEEDOR
+-- Suma de compras por proveedor (usar en tablas/gráficos)
+Monto por Proveedor = 
+CALCULATE(
+    SUM(FactCompras[Monto Transado])
+)
+-- Formato: $ Español, 0 decimales
+
+-- 📊 % PARTICIPACIÓN PROVEEDOR
+-- Porcentaje que representa cada proveedor del total
+% Participación Proveedor = 
+VAR MontoProveedor = [Monto por Proveedor]
+VAR MontoTotal = 
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        ALL(DimProveedores)
+    )
+RETURN
+    DIVIDE(MontoProveedor, MontoTotal, 0)
+-- Formato: Porcentaje, 2 decimales
+
+-- 🎯 CONCENTRACIÓN TOP 10 PROVEEDORES
+-- Porcentaje de compras concentrado en top 10 proveedores
+Concentración Top 10 Proveedores = 
+VAR Top10 = 
+    CALCULATETABLE(
+        TOPN(
+            10,
+            VALUES(DimProveedores[Rut Proveedor]),
+            [Monto por Proveedor],
+            DESC
+        )
+    )
+VAR MontoTop10 = 
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        Top10
+    )
+VAR MontoTotal = SUM(FactCompras[Monto Transado])
+RETURN
+    DIVIDE(MontoTop10, MontoTotal, 0)
+-- Formato: Porcentaje, 1 decimal
+
+-- 💰 PRECIO PROMEDIO PROVEEDOR
+-- Precio promedio de productos vendidos por proveedor
+Precio Promedio Proveedor = 
+VAR MontoTotal = SUM(FactCompras[Monto Transado])
+VAR CantidadTotal = SUM(FactCompras[Cantidad])
+RETURN
+    DIVIDE(MontoTotal, CantidadTotal, 0)
+-- Formato: $ Español, 2 decimales
+
+-- 📦 CANTIDAD VENDIDA PROVEEDOR
+-- Total de unidades vendidas por proveedor
+Cantidad Vendida Proveedor = 
+SUM(FactCompras[Cantidad])
+-- Formato: Número entero, separador de miles
+
+-- 📋 ÓRDENES POR PROVEEDOR
+-- Número de órdenes de compra por proveedor
+Órdenes por Proveedor = 
+DISTINCTCOUNT(FactCompras[Numero OC])
+-- Formato: Número entero
+
+
+-- ============================================================================
+-- SECCIÓN 4: ANÁLISIS DE PRODUCTOS
+-- ============================================================================
+
+-- 🎯 MONTO POR PRODUCTO
+-- Total de compras por producto
+Monto por Producto = 
+CALCULATE(
+    SUM(FactCompras[Monto Transado])
+)
+-- Formato: $ Español, 0 decimales
+
+-- 📦 CANTIDAD POR PRODUCTO
+-- Total de unidades compradas por producto
+Cantidad por Producto = 
+SUM(FactCompras[Cantidad])
+-- Formato: Número entero, separador de miles
+
+-- 💎 VALOR STOCK
+-- Valor total de stock (Cantidad * Precio Promedio)
+Valor Stock = 
+SUMX(
+    FactCompras,
+    FactCompras[Cantidad] * FactCompras[Precio Promedio]
+)
+-- Formato: $ Español, 0 decimales
+
+-- 📊 CLASIFICACIÓN ABC PRODUCTO
+-- Clasifica productos en A (80%), B (15%), C (5%) según ventas
+Clasificación ABC = 
+VAR MontoProducto = [Monto por Producto]
+VAR MontoTotal = 
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        ALL(DimProductos)
+    )
+VAR PorcentajeAcumulado = 
+    VAR ProductosSuperiores = 
+        FILTER(
+            ALL(DimProductos),
+            [Monto por Producto] >= MontoProducto
+        )
+    VAR MontoAcumulado = 
+        CALCULATE(
+            SUM(FactCompras[Monto Transado]),
+            ProductosSuperiores
+        )
+    RETURN
+        DIVIDE(MontoAcumulado, MontoTotal, 0)
+RETURN
+    SWITCH(
+        TRUE(),
+        PorcentajeAcumulado <= 0.80, "A",
+        PorcentajeAcumulado <= 0.95, "B",
+        "C"
+    )
+-- Formato: Texto
+
+-- 💰 PRECIO PROMEDIO PRODUCTO
+-- Precio promedio de un producto específico
+Precio Promedio Producto = 
+AVERAGE(FactCompras[Precio Promedio])
+-- Formato: $ Español, 2 decimales
+
+-- 📈 VARIACIÓN PRECIO PRODUCTO
+-- Desviación estándar del precio del producto (volatilidad)
+Variación Precio Producto = 
+STDEV.P(FactCompras[Precio Promedio])
+-- Formato: $ Español, 2 decimales
+
+-- 🔝 RANKING PRODUCTO
+-- Posición del producto por monto total
+Ranking Producto = 
+RANKX(
+    ALL(DimProductos),
+    [Monto por Producto],
+    ,
+    DESC,
+    DENSE
+)
+-- Formato: Número entero
+
+
+-- ============================================================================
+-- SECCIÓN 5: ANÁLISIS GEOGRÁFICO
+-- ============================================================================
+
+-- 🗺️ MONTO POR REGIÓN
+-- Total de compras por región
+Monto por Región = 
+CALCULATE(
+    SUM(FactCompras[Monto Transado])
+)
+-- Formato: $ Español, 0 decimales
+
+-- 📊 % DISTRIBUCIÓN POR REGIÓN
+-- Porcentaje que representa cada región del total
+% Distribución por Región = 
+VAR MontoRegion = [Monto por Región]
+VAR MontoTotal = 
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        ALL(DimRegiones)
+    )
+RETURN
+    DIVIDE(MontoRegion, MontoTotal, 0)
+-- Formato: Porcentaje, 2 decimales
+
+-- 💰 PRECIO PROMEDIO POR REGIÓN
+-- Precio promedio de productos en cada región
+Precio Promedio por Región = 
+VAR MontoTotal = SUM(FactCompras[Monto Transado])
+VAR CantidadTotal = SUM(FactCompras[Cantidad])
+RETURN
+    DIVIDE(MontoTotal, CantidadTotal, 0)
+-- Formato: $ Español, 2 decimales
+
+-- 📦 CANTIDAD POR REGIÓN
+-- Total de unidades compradas por región
+Cantidad por Región = 
+SUM(FactCompras[Cantidad])
+-- Formato: Número entero, separador de miles
+
+
+-- ============================================================================
+-- SECCIÓN 6: MEDIDAS AUXILIARES Y AVANZADAS
+-- ============================================================================
+
+-- 🎯 MEDIDA DE CONTROL - TOTAL REGISTROS
+-- Cuenta el número total de registros en la tabla de hechos
+Total Registros = 
+COUNTROWS(FactCompras)
+-- Formato: Número entero, separador de miles
+
+-- 📊 CRECIMIENTO MES A MES
+-- Variación porcentual del mes actual vs mes anterior
+Crecimiento Mes a Mes = 
+VAR MontoMesActual = [Monto Mes Actual]
+VAR MontoMesAnterior = 
+    CALCULATE(
+        SUM(FactCompras[Monto Transado]),
+        DATEADD(DimCalendario[Fecha], -1, MONTH)
+    )
+RETURN
+    DIVIDE(
+        MontoMesActual - MontoMesAnterior,
+        MontoMesAnterior,
+        0
+    )
+-- Formato: Porcentaje, 1 decimal
+
+-- 💹 ÍNDICE DE ROTACIÓN
+-- Frecuencia de compra (número de transacciones / productos únicos)
+Índice Rotación = 
+VAR NumTransacciones = COUNTROWS(FactCompras)
+VAR NumProductos = DISTINCTCOUNT(FactCompras[Id])
+RETURN
+    DIVIDE(NumTransacciones, NumProductos, 0)
+-- Formato: Número decimal, 2 decimales
+
+
+/*
+================================================================================
+CÓMO USAR ESTAS MEDIDAS EN POWER BI
+================================================================================
+
+PASO 1: CREAR MEDIDAS
+1. Abrir Power BI Desktop
+2. Ir a la vista de "Datos" o "Informe"
+3. Seleccionar la tabla FactCompras (o crear tabla separada "Medidas")
+4. Clic en "Nueva medida" en la cinta
+5. Copiar y pegar la fórmula DAX
+6. Presionar Enter
+
+PASO 2: FORMATEAR MEDIDAS
+Para medidas de montos ($):
+- Seleccionar la medida
+- Panel "Formato" > "Número" > "$ Español"
+- Decimales: 0 o 2 según el caso
+
+Para medidas de porcentaje (%):
+- Panel "Formato" > "Número" > "Porcentaje"
+- Decimales: 1 o 2
+
+Para medidas de cantidad:
+- Panel "Formato" > "Número" > "Número entero"
+- Activar "Separador de miles"
+
+PASO 3: ORGANIZAR MEDIDAS
+Crear carpetas de visualización:
+- KPIs Principales
+- Análisis Temporal
+- Proveedores
+- Productos
+- Geográfico
+
+PASO 4: USAR EN VISUALIZACIONES
+- Arrastrar medidas a tarjetas para KPIs
+- Usar en ejes de gráficos para análisis
+- Combinar con dimensiones para segmentación
+- Aplicar en tablas para reportes detallados
+
+================================================================================
+OPTIMIZACIONES Y BUENAS PRÁCTICAS APLICADAS
+================================================================================
+
+✅ Uso de variables (VAR) para mejorar rendimiento y legibilidad
+✅ DIVIDE con manejo de división por cero
+✅ ALL para remover filtros cuando es necesario
+✅ CALCULATE para cambiar contexto de filtro
+✅ FILTER para filtros complejos con mejor rendimiento que múltiples AND
+✅ Nombres descriptivos en español para facilitar comprensión
+✅ Comentarios explicativos para cada medida
+✅ Formatos sugeridos para cada tipo de medida
+✅ Medidas escalables para ~38,000 registros
+
+================================================================================
+MEDIDAS RECOMENDADAS PARA CADA DASHBOARD
+================================================================================
+
+📊 DASHBOARD 1: RESUMEN EJECUTIVO
+- Total Monto Transado
+- Número Proveedores Únicos
+- Número Productos Únicos
+- Ticket Promedio por OC
+- Variación % YoY
+- Monto Acumulado Año
+
+📈 DASHBOARD 2: ANÁLISIS DE PROVEEDORES
+- Monto por Proveedor
+- % Participación Proveedor
+- Concentración Top 10 Proveedores
+- Precio Promedio Proveedor
+- Cantidad Vendida Proveedor
+- Órdenes por Proveedor
+
+🎯 DASHBOARD 3: ANÁLISIS DE PRODUCTOS
+- Monto por Producto
+- Cantidad por Producto
+- Clasificación ABC
+- Valor Stock
+- Precio Promedio Producto
+- Ranking Producto
+
+🗺️ DASHBOARD 4: ANÁLISIS GEOGRÁFICO
+- Monto por Región
+- % Distribución por Región
+- Precio Promedio por Región
+- Cantidad por Región
+
+📅 DASHBOARD 5: ANÁLISIS TEMPORAL
+- Monto Año Actual
+- Monto Año Anterior
+- Variación % YoY
+- Monto Acumulado Año
+- Monto Mes Actual
+- Crecimiento Mes a Mes
+
+================================================================================
+SOLUCIÓN DE PROBLEMAS
+================================================================================
+
+❌ Error: "No se puede determinar el valor"
+✅ Solución: Verificar que las relaciones están bien configuradas
+
+❌ Error: "Referencia circular"
+✅ Solución: No usar la misma medida dentro de su propia definición
+
+❌ Medida devuelve valor incorrecto
+✅ Solución: Revisar el contexto de filtro con ALL() o ALLEXCEPT()
+
+❌ Rendimiento lento
+✅ Solución: Usar variables VAR y evitar FILTER cuando sea posible
+
+❌ División por cero
+✅ Solución: Siempre usar DIVIDE con tercer parámetro (valor por defecto)
+
+================================================================================
+FIN DEL ARCHIVO DE MEDIDAS DAX
+================================================================================
+*/

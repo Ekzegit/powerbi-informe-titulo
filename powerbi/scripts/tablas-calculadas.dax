@@ -1,0 +1,509 @@
+/*
+================================================================================
+TABLAS CALCULADAS DAX
+================================================================================
+Proyecto:     Análisis de Compras Públicas - Senado de la República
+Descripción:  Tablas calculadas para modelo de datos
+Autor:        Ekzegit
+Fecha:        Febrero 2026
+Versión:      1.0
+================================================================================
+
+CONTENIDO:
+1. DimCalendario - Tabla de fechas completa
+2. Tabla de Parámetros para Análisis Dinámicos
+3. Tabla de Clasificación ABC
+4. Tablas Auxiliares
+
+INSTRUCCIONES:
+- Crear cada tabla en Power BI Desktop
+- Ir a "Modelado" > "Nueva tabla"
+- Copiar y pegar el código DAX
+- Configurar relaciones según se indica
+
+================================================================================
+*/
+
+-- ============================================================================
+-- TABLA 1: DimCalendario - Tabla de Fechas
+-- ============================================================================
+
+/*
+DESCRIPCIÓN:
+Tabla de calendario completa con todas las columnas necesarias para análisis temporal.
+Genera fechas desde la primera hasta la última venta en el dataset.
+
+CÓMO CREAR:
+1. Ir a "Modelado" > "Nueva tabla"
+2. Copiar y pegar el código completo
+3. Nombrar la tabla como "DimCalendario"
+4. Configurar relación: FactCompras[Fecha] --> DimCalendario[Fecha] (N:1)
+5. Marcar DimCalendario como "Tabla de fechas"
+*/
+
+DimCalendario = 
+VAR FechaMin = DATE(2020, 1, 1)  -- Ajustar según primera fecha en datos
+VAR FechaMax = DATE(2026, 12, 31)  -- Ajustar según última fecha o futuro
+VAR CalendarioBase = 
+    CALENDAR(FechaMin, FechaMax)
+RETURN
+    ADDCOLUMNS(
+        CalendarioBase,
+        
+        -- Columnas de Año
+        "Año", YEAR([Date]),
+        "AñoMes", FORMAT([Date], "YYYY-MM"),
+        "AñoMesNumero", YEAR([Date]) * 100 + MONTH([Date]),
+        
+        -- Columnas de Trimestre
+        "Trimestre", "T" & FORMAT(QUARTER([Date]), "0"),
+        "TrimestreNumero", QUARTER([Date]),
+        "AñoTrimestre", YEAR([Date]) & " T" & FORMAT(QUARTER([Date]), "0"),
+        
+        -- Columnas de Mes
+        "Mes", MONTH([Date]),
+        "MesNumero", MONTH([Date]),
+        "NombreMes", FORMAT([Date], "MMMM", "es-ES"),
+        "NombreMesCorto", FORMAT([Date], "MMM", "es-ES"),
+        "MesAño", FORMAT([Date], "MMM YYYY", "es-ES"),
+        
+        -- Columnas de Semana
+        "Semana", WEEKNUM([Date], 2),  -- Semana comienza en lunes
+        "SemanadelAño", "S" & FORMAT(WEEKNUM([Date], 2), "00"),
+        "InicioSemana", [Date] - WEEKDAY([Date], 2) + 1,
+        "FinSemana", [Date] - WEEKDAY([Date], 2) + 7,
+        
+        -- Columnas de Día
+        "Día", DAY([Date]),
+        "DíadelAño", FORMAT([Date], "000", "es-ES"),
+        "DíadelMes", DAY([Date]),
+        "DíadelaSemana", WEEKDAY([Date], 2),  -- 1=Lunes, 7=Domingo
+        "NombreDía", FORMAT([Date], "dddd", "es-ES"),
+        "NombreDíaCorto", FORMAT([Date], "ddd", "es-ES"),
+        
+        -- Banderas y Clasificaciones
+        "EsFinDeSemana", IF(WEEKDAY([Date], 2) >= 6, "Sí", "No"),
+        "EsDíaHábil", IF(WEEKDAY([Date], 2) <= 5, "Sí", "No"),
+        "EsMesActual", IF(
+            MONTH([Date]) = MONTH(TODAY()) && YEAR([Date]) = YEAR(TODAY()),
+            "Sí",
+            "No"
+        ),
+        "EsAñoActual", IF(YEAR([Date]) = YEAR(TODAY()), "Sí", "No"),
+        
+        -- Columnas Relativas
+        "MesesDesdeHoy", DATEDIFF([Date], TODAY(), MONTH),
+        "AñosDesdeHoy", DATEDIFF([Date], TODAY(), YEAR),
+        
+        -- Períodos Fiscales (ajustar según año fiscal chileno)
+        "TrimestreFiscal", 
+            VAR MesFiscal = MONTH([Date])
+            RETURN
+                SWITCH(
+                    TRUE(),
+                    MesFiscal >= 1 && MesFiscal <= 3, "Q1",
+                    MesFiscal >= 4 && MesFiscal <= 6, "Q2",
+                    MesFiscal >= 7 && MesFiscal <= 9, "Q3",
+                    "Q4"
+                ),
+        
+        -- Formato de Fecha para Visualización
+        "FechaCorta", FORMAT([Date], "DD/MM/YYYY"),
+        "FechaLarga", FORMAT([Date], "DD 'de' MMMM 'de' YYYY", "es-ES"),
+        
+        -- Fecha como clave (útil para relaciones)
+        "Fecha", [Date]
+    )
+
+/*
+COLUMNAS IMPORTANTES CREADAS:
+✅ Fecha - Clave primaria (tipo Date)
+✅ Año, Mes, Día - Componentes numéricos
+✅ NombreMes, NombreDía - Nombres en español
+✅ Trimestre, Semana - Agrupaciones temporales
+✅ EsFinDeSemana, EsDíaHábil - Clasificaciones
+✅ MesesDesdeHoy, AñosDesdeHoy - Análisis relativo
+
+CONFIGURACIÓN POST-CREACIÓN:
+1. Marcar la tabla como "Tabla de fechas"
+   - Clic derecho en DimCalendario
+   - "Marcar como tabla de fechas"
+   - Seleccionar columna "Fecha"
+2. Ordenar columnas personalizadas:
+   - NombreMes ordenar por MesNumero
+   - NombreDía ordenar por DíadelaSemana
+   - Trimestre ordenar por TrimestreNumero
+3. Ocultar columnas auxiliares que no se usarán en visualizaciones
+*/
+
+
+-- ============================================================================
+-- TABLA 2: Parámetros de Análisis
+-- ============================================================================
+
+/*
+DESCRIPCIÓN:
+Tabla de parámetros para crear slicers dinámicos que permitan
+cambiar la métrica mostrada en un visual.
+
+CÓMO USAR:
+1. Crear la tabla
+2. Crear un slicer con la columna "NombreParámetro"
+3. Usar la medida "Valor Parámetro Seleccionado" en visuales
+*/
+
+ParametrosAnalisis = 
+{
+    ("Monto Total", 1, "$ Español"),
+    ("Cantidad Total", 2, "Número entero"),
+    ("Precio Promedio", 3, "$ Español"),
+    ("Número de OC", 4, "Número entero"),
+    ("Valor Stock", 5, "$ Español")
+}
+
+-- Luego agregar columnas con ADDCOLUMNS:
+ParametrosAnalisis = 
+ADDCOLUMNS(
+    {
+        ("Monto Total", 1),
+        ("Cantidad Total", 2),
+        ("Precio Promedio", 3),
+        ("Número de OC", 4),
+        ("Valor Stock", 5)
+    },
+    "NombreParámetro", [Value1],
+    "OrdenParámetro", [Value2]
+)
+
+/*
+MEDIDA COMPLEMENTARIA PARA USAR CON PARÁMETROS:
+Crear esta medida para obtener el valor según el parámetro seleccionado
+*/
+
+-- Valor Parámetro Seleccionado = 
+-- VAR ParametroSel = SELECTEDVALUE(ParametrosAnalisis[NombreParámetro], "Monto Total")
+-- RETURN
+--     SWITCH(
+--         ParametroSel,
+--         "Monto Total", [Total Monto Transado],
+--         "Cantidad Total", [Total Cantidad Productos],
+--         "Precio Promedio", [Precio Promedio General],
+--         "Número de OC", [Número Órdenes Compra],
+--         "Valor Stock", [Valor Stock],
+--         BLANK()
+--     )
+
+
+-- ============================================================================
+-- TABLA 3: Clasificación ABC
+-- ============================================================================
+
+/*
+DESCRIPCIÓN:
+Tabla auxiliar para clasificación ABC de productos.
+Define los rangos para cada categoría.
+
+USO:
+Referencia para clasificar productos según su importancia en ventas.
+*/
+
+ClasificacionABC = 
+{
+    ("A - Alta rotación", 1, 0.00, 0.80, "Los productos que representan el 80% de las ventas"),
+    ("B - Media rotación", 2, 0.80, 0.95, "Los productos que representan el siguiente 15% de las ventas"),
+    ("C - Baja rotación", 3, 0.95, 1.00, "Los productos que representan el último 5% de las ventas")
+}
+
+ClasificacionABC = 
+ADDCOLUMNS(
+    {
+        ("A - Alta rotación", 1, 0.00, 0.80),
+        ("B - Media rotación", 2, 0.80, 0.95),
+        ("C - Baja rotación", 3, 0.95, 1.00)
+    },
+    "Clasificación", [Value1],
+    "Orden", [Value2],
+    "RangoInferior", [Value3],
+    "RangoSuperior", [Value4],
+    "Color", 
+        SWITCH(
+            [Value1],
+            "A - Alta rotación", "#2E7D32",  -- Verde
+            "B - Media rotación", "#F57C00",  -- Naranja
+            "C - Baja rotación", "#C62828"    -- Rojo
+        ),
+    "Descripción",
+        SWITCH(
+            [Value1],
+            "A - Alta rotación", "Productos críticos - 80% de ventas",
+            "B - Media rotación", "Productos importantes - 15% de ventas",
+            "C - Baja rotación", "Productos complementarios - 5% de ventas"
+        )
+)
+
+
+-- ============================================================================
+-- TABLA 4: Rangos de Precios
+-- ============================================================================
+
+/*
+DESCRIPCIÓN:
+Tabla para agrupar productos por rangos de precio.
+Útil para análisis de segmentación.
+*/
+
+RangosPrecios = 
+{
+    ("Bajo", 1, 0, 10000, "Productos de bajo costo"),
+    ("Medio", 2, 10000, 50000, "Productos de costo medio"),
+    ("Alto", 3, 50000, 100000, "Productos de alto costo"),
+    ("Premium", 4, 100000, 999999999, "Productos premium")
+}
+
+RangosPrecios = 
+ADDCOLUMNS(
+    {
+        ("Bajo", 1, 0, 10000),
+        ("Medio", 2, 10000, 50000),
+        ("Alto", 3, 50000, 100000),
+        ("Premium", 4, 100000, 999999999)
+    },
+    "RangoPrecio", [Value1],
+    "Orden", [Value2],
+    "LimiteInferior", [Value3],
+    "LimiteSuperior", [Value4],
+    "ColorRango",
+        SWITCH(
+            [Value1],
+            "Bajo", "#4CAF50",
+            "Medio", "#2196F3",
+            "Alto", "#FF9800",
+            "Premium", "#9C27B0"
+        )
+)
+
+
+-- ============================================================================
+-- TABLA 5: Meses del Año (Auxiliar)
+-- ============================================================================
+
+/*
+DESCRIPCIÓN:
+Tabla auxiliar con los 12 meses del año.
+Útil para asegurar que se muestren todos los meses incluso si no hay datos.
+*/
+
+MesesAño = 
+{
+    (1, "Enero", "Ene"),
+    (2, "Febrero", "Feb"),
+    (3, "Marzo", "Mar"),
+    (4, "Abril", "Abr"),
+    (5, "Mayo", "May"),
+    (6, "Junio", "Jun"),
+    (7, "Julio", "Jul"),
+    (8, "Agosto", "Ago"),
+    (9, "Septiembre", "Sep"),
+    (10, "Octubre", "Oct"),
+    (11, "Noviembre", "Nov"),
+    (12, "Diciembre", "Dic")
+}
+
+MesesAño = 
+ADDCOLUMNS(
+    {
+        (1, "Enero", "Ene"),
+        (2, "Febrero", "Feb"),
+        (3, "Marzo", "Mar"),
+        (4, "Abril", "Abr"),
+        (5, "Mayo", "May"),
+        (6, "Junio", "Jun"),
+        (7, "Julio", "Jul"),
+        (8, "Agosto", "Ago"),
+        (9, "Septiembre", "Sep"),
+        (10, "Octubre", "Oct"),
+        (11, "Noviembre", "Nov"),
+        (12, "Diciembre", "Dic")
+    },
+    "MesNumero", [Value1],
+    "NombreMes", [Value2],
+    "NombreMesCorto", [Value3],
+    "Trimestre", 
+        SWITCH(
+            TRUE(),
+            [Value1] <= 3, "T1",
+            [Value1] <= 6, "T2",
+            [Value1] <= 9, "T3",
+            "T4"
+        ),
+    "Semestre",
+        IF([Value1] <= 6, "S1", "S2")
+)
+
+
+-- ============================================================================
+-- TABLA 6: Umbral de Análisis (What-If Parameters)
+-- ============================================================================
+
+/*
+DESCRIPCIÓN:
+Tabla de parámetro What-If para análisis de escenarios.
+Permite ajustar dinámicamente umbrales o porcentajes.
+
+CÓMO CREAR:
+1. Ir a "Modelado" > "Nuevo parámetro"
+2. O crear manualmente con este código
+*/
+
+UmbralTop = 
+GENERATESERIES(5, 50, 5)
+
+-- Agregar columnas descriptivas
+UmbralTopCompleto = 
+ADDCOLUMNS(
+    GENERATESERIES(5, 50, 5),
+    "Umbral", [Value],
+    "Descripción", "Top " & [Value] & " elementos",
+    "UmbralValor", [Value]
+)
+
+
+-- ============================================================================
+-- TABLA 7: Índices de Performance
+-- ============================================================================
+
+/*
+DESCRIPCIÓN:
+Tabla con índices de referencia para comparar performance.
+Útil para establecer metas y objetivos.
+*/
+
+IndicesPerformance = 
+{
+    ("Excelente", 1, 1.2, "#2E7D32"),
+    ("Bueno", 2, 1.0, "#4CAF50"),
+    ("Promedio", 3, 0.8, "#FFC107"),
+    ("Bajo", 4, 0.6, "#FF9800"),
+    ("Crítico", 5, 0.4, "#F44336")
+}
+
+IndicesPerformance = 
+ADDCOLUMNS(
+    {
+        ("Excelente", 1, 1.2),
+        ("Bueno", 2, 1.0),
+        ("Promedio", 3, 0.8),
+        ("Bajo", 4, 0.6),
+        ("Crítico", 5, 0.4)
+    },
+    "Índice", [Value1],
+    "Orden", [Value2],
+    "Multiplicador", [Value3],
+    "Color",
+        SWITCH(
+            [Value1],
+            "Excelente", "#2E7D32",
+            "Bueno", "#4CAF50",
+            "Promedio", "#FFC107",
+            "Bajo", "#FF9800",
+            "Crítico", "#F44336"
+        ),
+    "Descripción",
+        SWITCH(
+            [Value1],
+            "Excelente", "Supera meta en 20% o más",
+            "Bueno", "Cumple la meta",
+            "Promedio", "80-100% de la meta",
+            "Bajo", "60-80% de la meta",
+            "Crítico", "Menos del 60% de la meta"
+        )
+)
+
+
+/*
+================================================================================
+CÓMO USAR ESTAS TABLAS CALCULADAS
+================================================================================
+
+PASO 1: CREAR TABLA CALENDARIO (PRIORITARIO)
+1. Ir a "Vista de datos"
+2. Clic en "Nueva tabla" en la cinta
+3. Copiar el código de DimCalendario
+4. Ajustar FechaMin y FechaMax según tus datos
+5. Presionar Enter
+6. Marcar como tabla de fechas:
+   - Clic derecho > "Marcar como tabla de fechas"
+   - Seleccionar columna "Fecha"
+7. Crear relación con FactCompras:
+   - FactCompras[Fecha] --> DimCalendario[Fecha] (Muchos a Uno)
+
+PASO 2: CREAR TABLAS AUXILIARES (OPCIONAL)
+- Las tablas auxiliares mejoran el análisis pero no son obligatorias
+- Crear según las necesidades del proyecto
+- ParametrosAnalisis: Para slicers dinámicos
+- ClasificacionABC: Para análisis de productos
+- RangosPrecios: Para segmentación de precios
+
+PASO 3: CONFIGURAR ORDENAMIENTO
+Para que los meses y días se ordenen correctamente:
+1. Seleccionar columna "NombreMes" en DimCalendario
+2. En "Herramientas de columna" > "Ordenar por columna"
+3. Seleccionar "MesNumero"
+4. Repetir para otras columnas (NombreDía por DíadelaSemana)
+
+PASO 4: FORMATEAR COLUMNAS
+- Fechas: Formato corto DD/MM/YYYY
+- Números: Separador de miles
+- Montos: $ Español
+- Porcentajes: % con 2 decimales
+
+================================================================================
+RELACIONES RECOMENDADAS
+================================================================================
+
+TABLA DE CALENDARIO:
+FactCompras[Fecha] ----N:1----> DimCalendario[Fecha]
+- Tipo: Muchos a uno
+- Dirección filtro cruzado: Una
+- Hacer activa: Sí
+
+OTRAS RELACIONES:
+Las tablas auxiliares generalmente NO tienen relaciones directas.
+Se usan en medidas con funciones como SELECTEDVALUE() o en slicers.
+
+================================================================================
+OPTIMIZACIÓN Y RENDIMIENTO
+================================================================================
+
+✅ Tabla calendario contiene solo fechas necesarias (rango ajustado)
+✅ Columnas calculadas en lugar de medidas para mejor rendimiento
+✅ Ordenamiento correcto de columnas de texto
+✅ Formato de datos apropiado para reducir tamaño
+✅ Tablas auxiliares pequeñas (<100 filas) para análisis rápidos
+
+CONSIDERACIONES:
+- DimCalendario puede tener 2,000-4,000 filas (varios años)
+- Tablas auxiliares tienen < 50 filas cada una
+- Impacto mínimo en tamaño del modelo
+- Gran mejora en capacidad de análisis temporal
+
+================================================================================
+SOLUCIÓN DE PROBLEMAS
+================================================================================
+
+❌ Error en DimCalendario: "Referencia circular"
+✅ Asegurar que no hay referencias a la misma tabla
+
+❌ Los meses no se ordenan correctamente
+✅ Configurar "Ordenar por columna" en NombreMes
+
+❌ No aparecen todas las fechas en gráficos
+✅ Verificar que la relación con FactCompras está activa
+
+❌ Error al crear tabla de parámetros
+✅ Usar sintaxis correcta de tuplas con paréntesis {}
+
+================================================================================
+FIN DEL ARCHIVO DE TABLAS CALCULADAS
+================================================================================
+*/
